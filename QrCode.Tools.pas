@@ -3,7 +3,9 @@ unit QrCode.Tools;
 interface
 
 uses
-  FMX.Objects;
+  FMX.Objects,
+  Classes,
+  System.UITypes;
 
 type
   TQrCodeTools = class
@@ -14,10 +16,11 @@ implementation
 
 uses
   DelphiZXingQRCode.FMX,
-  System.UITypes,
   FMX.Graphics,
   System.Types,
-  UIConsts;
+  Math,
+  UIConsts,
+  SysUtils;
 
 { TQrCodeTools }
 
@@ -25,53 +28,59 @@ class procedure TQrCodeTools.Generate(aText: string; aImage: TImage);
 var
   QRCode: TDelphiZXingQRCode;
   Row, Column : Integer;
-  pixelColor  : TAlphaColor;
-  vBitMapData : TBitmapData;
-  rSrc, rDest : TRectF;
   QRCodeBitmap: TBitmap;
+  Rapport     : integer;
+  RowOffset   : integer;
+  ColOffset   : integer;
+  DoDraw      : boolean;
+  BmpSize     : integer;
 begin
   QRCode := TDelphiZXingQRCode.Create;
-  QRCodeBitmap := TBitmap.Create;
+  BmpSize      := Min(Round(aImage.Width), Round(aImage.Height));
+  QRCodeBitmap := TBitmap.Create(BmpSize, BmpSize);
+
   try
     QRCode.Data := aText;
     QRCode.Encoding := TQRCodeEncoding.qrAuto;
-//    QRCode.QuietZone := StrToIntDef('1234', 4);
-    QRCodeBitmap.SetSize(QRCode.Rows, QRCode.Columns);
-    for Row := 0 to QRCode.Rows - 1 do
-    begin
-      for Column := 0 to QRCode.Columns - 1 do
-      begin
-        if (QRCode.IsBlack[Row, Column]) then
-          pixelColor := StringToAlphaColor('#FF3D4785')
-        else
-          pixelColor := TAlphaColors.White;
 
-        if QRCodeBitmap.Map(TMapAccess.Write, vBitMapData)  then
-        try
-          vBitMapData.SetPixel(Column, Row, pixelColor);
-        finally
-          QRCodeBitmap.Unmap(vBitMapData);
-        end;
-      end;
-    end;
+    // clear canvas and set colors
+    QRCodeBitmap.Clear(TAlphaColors.White);
 
-    //-----
-    aImage.Bitmap.SetSize(QRCodeBitmap.Width, QRCodeBitmap.Height);
+    QRCodeBitmap.Canvas.Stroke.Kind  := TBrushKind.None;
 
-    rSrc := TRectF.Create(0, 0, QRCodeBitmap.Width, QRCodeBitmap.Height);
-    rDest := TRectF.Create(0, 0, aImage.Bitmap.Width, aImage.Bitmap.Height);
+    QRCodeBitmap.Canvas.Fill.Color   := TAlphaColors.Black;
+    QRCodeBitmap.Canvas.Fill.Kind    := TBrushKind.Solid;
 
-    if aImage.Bitmap.Canvas.BeginScene then
+    // multiply qrcode size to fit with image size
+    Rapport := Round(BmpSize / QRCode.Rows);
+
+    RowOffset := 0;
     try
-      aImage.Bitmap.Canvas.Clear(TAlphaColors.White);
-      aImage.DisableInterpolation := true;
-      aImage.WrapMode := TImageWrapMode.Fit;
+      QRCodeBitmap.Canvas.BeginScene;
 
-      aImage.Bitmap.Canvas.DrawBitmap(QRCodeBitmap, rSrc, rDest, 1);
+      for Row := 0 to QRCode.Rows - 1 do
+      begin
+        ColOffset := 0;
+
+        for Column := 0 to QRCode.Columns - 1 do
+        begin
+          DoDraw := QRCode.IsBlack[Row, Column];
+
+          if DoDraw then
+          begin
+            QRCodeBitmap.Canvas.FillRect(TRectF.Create(RowOffset, ColOffset, RowOffset + Rapport, ColOffset + Rapport), 0,0, [], 1);
+          end;
+
+          ColOffset := ColOffset + Rapport;
+        end;
+        RowOffset := RowOffset + Rapport;
+      end;
     finally
-      aImage.Bitmap.Canvas.EndScene;
+      QRCodeBitmap.Canvas.EndScene;
     end;
-    //-----
+
+    aImage.WrapMode := TImageWrapMode.Original;
+    aImage.Bitmap.Assign(QRCodeBitmap);
   finally
     QRCodeBitmap.Free;
     QRCode.Free;
